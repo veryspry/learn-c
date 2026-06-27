@@ -1,5 +1,6 @@
-#include <stdio.h>
 #include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 void stream_to_upper(FILE *ifp, FILE *ofp) {
@@ -28,60 +29,128 @@ void wrap_lines_hard(FILE *ifp, FILE *ofp, int max_len) {
   }
 }
 
+void flush_line(FILE *ofp, char *buf, int from, int to) {
+  for (int i = from; i < to; i++) {
+    fputc(buf[i], ofp);
+  }
+
+  fputc('\n', ofp);
+}
+
+typedef struct {
+  char *data;
+  int len;
+  int capacity;
+  int head;
+  int tail;
+} charbuf;
+
+charbuf charbuf_new(int initial_cap) {
+  charbuf buf;
+
+  void *data = malloc(initial_cap);
+  if (data == NULL) {
+    fprintf(stderr, "Fatal: failed to allocate %i bytes", initial_cap);
+    abort();
+  }
+
+  buf.data = data;
+  buf.len = 0;
+  buf.capacity = initial_cap;
+  buf.head = 0;
+  buf.tail = 0;
+
+  return buf;
+}
+
+void charbuf_free(charbuf *buf) {
+  free(buf->data);
+
+  buf->data = NULL;
+  buf->len = 0;
+  buf->capacity = 0;
+  buf->head = 0;
+  buf->tail = 0;
+}
+
+void charbuf_push(charbuf *buf, char c) {
+  buf->data[buf->tail] = c;
+
+  buf->tail++;
+  buf->len++;
+
+  if (buf->tail >= buf->capacity) {
+    buf->tail = 0;
+  }
+}
+
+void charbuf_flush_line(charbuf *buf, FILE *ofp, int from, int to) {
+
+  int count = (to - from + buf->capacity) % buf->capacity;
+
+  for (int n = 0; n < count; n++) {
+    int i = (from + n) % buf->capacity;
+
+    fputc(buf->data[i], ofp);
+  }
+
+  fputc('\n', ofp);
+}
+
 void wrap_lines(FILE *ifp, FILE *ofp, int max_len) {
   int c;
-  char buf[1024];
-  int curr_len = 0;
+
+  charbuf buf = charbuf_new(1024);
+
   int last_ws = -1;
 
   fseek(ifp, 0, SEEK_SET);
 
-  while((c = fgetc(ifp)) != EOF) {
-    if ((c == ' ' || c == '\t') && curr_len >= max_len) {
-      last_ws = curr_len;
-
+  while ((c = fgetc(ifp)) != EOF) {
+    if ((c == ' ' || c == '\t') && buf.len >= max_len) {
       // flush buffer up to whitespace before max_len
-      for (int i = 0; i < curr_len; i++) {
-        fputc(buf[i], ofp);
+      // or whole buffer if this is -1 as there isn't another whitespace in the
+      // buffer
+      if (last_ws == -1) {
+        charbuf_flush_line(&buf, ofp, buf.head, buf.tail);
+
+        buf.head = buf.tail;
+        buf.len = 0;
+      } else {
+        charbuf_flush_line(&buf, ofp, buf.head, last_ws);
+
+        // skip ahead because the whitespace gets consumed by the wrap
+        buf.head = last_ws + 1;
+
+        // TODO fix this in case of buffer wrap.
+        buf.len = buf.tail - buf.head;
+
+        last_ws = buf.tail;
       }
-
-      fputc('\n', ofp);
-
-      // reset items that have not been flushed, ignoring leading whitespace
-      // as this will be the start of a newline.
-      int new_curr_len = 0;
-      for (int i = last_ws + 1; i < curr_len; i++) {
-        new_curr_len = i - last_ws - 1;
-        buf[new_curr_len] = buf[i];
-      }
-
-      curr_len = new_curr_len;
-
-      memset(&buf[curr_len], 0, sizeof(buf) - curr_len);
-
-      last_ws = -1;
 
       continue;
     }
 
     if (c == '\n') {
-      fputc(c, ofp);
+      charbuf_flush_line(&buf, ofp, buf.head, buf.tail);
+
+      buf.head = buf.tail;
+      buf.len = 0;
+      last_ws = -1;
       continue;
     }
 
-
     if ((c == ' ' || c == '\t')) {
-      last_ws = curr_len;
+      last_ws = buf.tail;
     }
 
-    buf[curr_len] = c;
-
-    curr_len++;
+    charbuf_push(&buf, c);
   }
 
-  for (int i = 0; i < curr_len; i++) {
-    fputc(buf[i], ofp);
-  }
+  // flush remaining contents
+  charbuf_flush_line(&buf, ofp, buf.head, buf.tail);
+
+  charbuf_free(&buf);
 }
 
 int main(int argc, char **argv) {
@@ -113,8 +182,9 @@ int main(int argc, char **argv) {
 
   // stream_to_upper(ifp, ofp);
 
-  printf("dumb truncate:\n\n");
-  wrap_lines_hard(ifp, ofp, 30);
+  // printf("dumb truncate:\n\n");
+  // wrap_lines_hard(ifp, ofp, 30);
+  
   printf("\n\nsmart truncate:\n\n");
   wrap_lines(ifp, ofp, 30);
 
