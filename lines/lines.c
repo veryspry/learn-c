@@ -39,41 +39,46 @@ void flush_line(FILE *ofp, char *buf, int from, int to) {
 
 typedef struct {
   char *data;
-  int len;
   int capacity;
+  int len;
   int head;
   int tail;
 } charbuf;
 
-charbuf charbuf_new(int initial_cap) {
-  charbuf buf;
+charbuf *charbuf_new(int initial_cap) {
+  charbuf *buf;
+  buf = malloc(sizeof(charbuf));
 
-  void *data = malloc(initial_cap);
+  if (buf == NULL) {
+    fprintf(stderr, "Fatal: failed to allocate charbuf");
+    abort();
+  }
+
+  char *data = malloc(initial_cap);
   if (data == NULL) {
     fprintf(stderr, "Fatal: failed to allocate %i bytes", initial_cap);
     abort();
   }
 
-  buf.data = data;
-  buf.len = 0;
-  buf.capacity = initial_cap;
-  buf.head = 0;
-  buf.tail = 0;
+  buf->data = data;
+  buf->capacity = initial_cap;
+  buf->len = 0;
+  buf->head = 0;
+  buf->tail = 0;
 
   return buf;
 }
 
 void charbuf_free(charbuf *buf) {
   free(buf->data);
-
-  buf->data = NULL;
-  buf->len = 0;
-  buf->capacity = 0;
-  buf->head = 0;
-  buf->tail = 0;
+  free(buf);
 }
 
-void charbuf_push(charbuf *buf, char c) {
+int charbuf_push(charbuf *buf, char c) {
+  if (buf->len >= buf->capacity - 1) {
+    return -1;
+  }
+
   buf->data[buf->tail] = c;
 
   buf->tail++;
@@ -82,10 +87,11 @@ void charbuf_push(charbuf *buf, char c) {
   if (buf->tail >= buf->capacity) {
     buf->tail = 0;
   }
+
+  return 0;
 }
 
-void charbuf_flush_line(charbuf *buf, FILE *ofp, int from, int to) {
-
+void charbuf_flush_line_chunk(charbuf *buf, FILE *ofp, int from, int to) {
   int count = (to - from + buf->capacity) % buf->capacity;
 
   for (int n = 0; n < count; n++) {
@@ -93,6 +99,10 @@ void charbuf_flush_line(charbuf *buf, FILE *ofp, int from, int to) {
 
     fputc(buf->data[i], ofp);
   }
+}
+
+void charbuf_flush_line(charbuf *buf, FILE *ofp, int from, int to) {
+  charbuf_flush_line_chunk(buf, ofp, from, to);
 
   fputc('\n', ofp);
 }
@@ -100,57 +110,73 @@ void charbuf_flush_line(charbuf *buf, FILE *ofp, int from, int to) {
 void wrap_lines(FILE *ifp, FILE *ofp, int max_len) {
   int c;
 
-  charbuf buf = charbuf_new(1024);
+  charbuf *buf = charbuf_new(1024);
+
+  int push_res = 0;
 
   int last_ws = -1;
 
   fseek(ifp, 0, SEEK_SET);
 
   while ((c = fgetc(ifp)) != EOF) {
-    if ((c == ' ' || c == '\t') && buf.len >= max_len) {
+
+    if (buf->len >= buf->capacity - 2) {
+      // if the line buffer is full, flush a partial line and reset the buffer.
+      charbuf_flush_line_chunk(buf, ofp, buf->head, buf->tail);
+      buf->len = 0;
+      buf->head = 0;
+      buf->tail = 0;
+      continue;
+    }
+
+    if ((c == ' ' || c == '\t') && buf->len >= max_len) {
       // flush buffer up to whitespace before max_len
       // or whole buffer if this is -1 as there isn't another whitespace in the
       // buffer
       if (last_ws == -1) {
-        charbuf_flush_line(&buf, ofp, buf.head, buf.tail);
+        charbuf_flush_line(buf, ofp, buf->head, buf->tail);
 
-        buf.head = buf.tail;
-        buf.len = 0;
+        buf->head = buf->tail;
+        buf->len = 0;
       } else {
-        charbuf_flush_line(&buf, ofp, buf.head, last_ws);
+        charbuf_flush_line(buf, ofp, buf->head, last_ws);
 
         // skip ahead because the whitespace gets consumed by the wrap
-        buf.head = last_ws + 1;
+        buf->head = last_ws + 1;
 
-        // TODO fix this in case of buffer wrap.
-        buf.len = buf.tail - buf.head;
+        buf->len = (buf->tail - buf->head + buf->capacity) % buf->capacity;
 
-        last_ws = buf.tail;
+        last_ws = buf->tail;
       }
 
       continue;
     }
 
     if (c == '\n') {
-      charbuf_flush_line(&buf, ofp, buf.head, buf.tail);
+      charbuf_flush_line(buf, ofp, buf->head, buf->tail);
 
-      buf.head = buf.tail;
-      buf.len = 0;
+      buf->head = buf->tail;
+      buf->len = 0;
       last_ws = -1;
       continue;
     }
 
     if ((c == ' ' || c == '\t')) {
-      last_ws = buf.tail;
+      last_ws = buf->tail;
     }
 
-    charbuf_push(&buf, c);
+    push_res = charbuf_push(buf, c);
+
+    if (push_res == -1) {
+      fprintf(stderr, "Fatal: buffer overflowed");
+      abort();
+    }
   }
 
   // flush remaining contents
-  charbuf_flush_line(&buf, ofp, buf.head, buf.tail);
+  charbuf_flush_line(buf, ofp, buf->head, buf->tail);
 
-  charbuf_free(&buf);
+  charbuf_free(buf);
 }
 
 int main(int argc, char **argv) {
@@ -182,10 +208,8 @@ int main(int argc, char **argv) {
 
   // stream_to_upper(ifp, ofp);
 
-  // printf("dumb truncate:\n\n");
   // wrap_lines_hard(ifp, ofp, 30);
-  
-  printf("\n\nsmart truncate:\n\n");
+
   wrap_lines(ifp, ofp, 30);
 
   fclose(ifp);
