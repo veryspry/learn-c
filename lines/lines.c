@@ -309,18 +309,36 @@ void handle_upper(int argc, char **argv) {
   fclose(ifp);
 }
 
-int main(int argc, char **argv) {
+typedef struct command_handler {
+  const char *command;
+  void (*handler)(int, char **);
+} command_handler;
+
+int excmd(struct command_handler *table, int table_len, int argc, char **argv) {
   if (argc < 2) {
     print_help();
     return 0;
   }
 
-  if (strcmp(argv[1], "wrap") == 0) {
-    handle_wrap(argc, argv);
-  } else if (strcmp(argv[1], "upper") == 0) {
-    handle_upper(argc, argv);
-  } else {
-    print_help();
+  for (int i = 0; i < table_len; i++) {
+    if (strcmp(argv[1], table[i].command) == 0) {
+      table[i].handler(argc, argv);
+      return 0;
+    }
   }
-  return 0;
+
+  fprintf(stderr, "Fatal: Invalid command %s passed.\n", argv[1]);
+
+  return 1;
+}
+
+int main(int argc, char **argv) {
+  struct command_handler command_table[] = {
+      {"wrap", handle_wrap},
+      {"upper", handle_upper},
+  };
+
+  int table_len = sizeof(command_table) / sizeof(command_table[0]);
+
+  return excmd(command_table, table_len, argc, argv);
 }
