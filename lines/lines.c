@@ -50,14 +50,14 @@ charbuf *charbuf_new(int initial_cap) {
   buf = malloc(sizeof(charbuf));
 
   if (buf == NULL) {
-    fprintf(stderr, "Fatal: failed to allocate charbuf");
-    abort();
+    fprintf(stderr, "Fatal: failed to allocate charbuf\n");
+    exit(1);
   }
 
   char *data = malloc(initial_cap);
   if (data == NULL) {
-    fprintf(stderr, "Fatal: failed to allocate %i bytes", initial_cap);
-    abort();
+    fprintf(stderr, "Fatal: failed to allocate %i bytes\n", initial_cap);
+    exit(1);
   }
 
   buf->data = data;
@@ -168,8 +168,8 @@ void wrap_lines(FILE *ifp, FILE *ofp, int max_len) {
     push_res = charbuf_push(buf, c);
 
     if (push_res == -1) {
-      fprintf(stderr, "Fatal: buffer overflowed");
-      abort();
+      fprintf(stderr, "Fatal: buffer overflowed\n");
+      exit(1);
     }
   }
 
@@ -179,39 +179,148 @@ void wrap_lines(FILE *ifp, FILE *ofp, int max_len) {
   charbuf_free(buf);
 }
 
-int main(int argc, char **argv) {
+void print_help() {
+  fprintf(stdout,
+          "Stream based text manipulation tools for fun 🧚‍♂️.\n\n\
+USAGE\n\
+  lines <command> [flags]\n\n\
+COMMANDS\n\
+  wrap:     Wrap lines.\n\
+  upper:    Uppercase input\n\n\
+FLAGS\n\
+  --help    Show help for command\n\
+  \n");
+}
 
-  if (argc < 2) {
-    fprintf(
-        stderr,
-        "Not enough arguments. Usage: lines [INPUT_FILE] ([OUTPUT_FILE])\n");
-    return 1;
+void print_help_wrap() {
+  fprintf(stdout, "Wrap lines.\n\n\
+USAGE\n\
+  lines wrap <input-file> [flags]\n\n\
+FLAGS\n\
+  --help    Show help for command\n\
+  --len     Line wrap length\n\
+");
+}
+
+void print_help_upper() {
+  fprintf(stdout, "Uppercase input.\n\n\
+USAGE\n\
+  lines upper <input-file> [flags]\n\n\
+FLAGS\n\
+  --help    Show help for command\n\
+");
+}
+
+typedef struct wrap_args {
+  char *in_file;
+  int len;
+} wrap_args;
+
+void handle_wrap(int argc, char **argv) {
+  wrap_args *args = malloc(sizeof(wrap_args));
+
+  if (args == NULL) {
+    fprintf(stderr, "Fatal: could not allocate %lu bytes.", sizeof(wrap_args));
+    exit(1);
   }
 
-  char *in_filename = argv[1];
-  char *out_filename = NULL;
+  args->in_file = NULL;
+  args->len = 50;
 
-  FILE *ifp;
-  FILE *ofp = stdout;
+  FILE *ifp = NULL;
+  const char *len_err_str = NULL;
 
-  if (argc > 2) {
-    char *out_filename = argv[2];
-    ofp = fopen(out_filename, "w");
+  for (int i = 2; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      print_help_wrap();
+      exit(0);
+    }
+
+    if (strcmp(argv[i], "--len") == 0) {
+      args->len = strtonum(argv[i + 1], 1, 10000, &len_err_str);
+
+      if (len_err_str != NULL) {
+        fprintf(stderr, "Fatal: [%s] Coud not parse --len flag.", len_err_str);
+        exit(1);
+      }
+
+      i++;
+      continue;
+    }
+
+    args->in_file = argv[i];
   }
 
-  ifp = fopen(in_filename, "r");
+  if (args->in_file == NULL) {
+    fprintf(stderr, "Fatal: no input file provided\n");
+    exit(1);
+  }
+
+  ifp = fopen(args->in_file, "r");
 
   if (ifp == NULL) {
-    fprintf(stderr, "Could not open file\n");
-    return 1;
+    fprintf(stderr, "Fatal: could not open %s\n", args->in_file);
+    exit(1);
   }
 
-  // stream_to_upper(ifp, ofp);
-
-  // wrap_lines_hard(ifp, ofp, 30);
-
-  wrap_lines(ifp, ofp, 30);
+  wrap_lines(ifp, stdout, args->len);
 
   fclose(ifp);
-  fclose(ofp);
+}
+
+typedef struct upper_args {
+  char *in_file;
+} upper_args;
+
+void handle_upper(int argc, char **argv) {
+  upper_args *args = malloc(sizeof(upper_args));
+
+  if (args == NULL) {
+    fprintf(stderr, "Fatal: could not allocate %lu bytes.", sizeof(upper_args));
+  }
+
+  args->in_file = NULL;
+
+  FILE *ifp = NULL;
+
+  for (int i = 2; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      print_help_upper();
+      exit(0);
+    }
+
+    args->in_file = argv[i];
+  }
+
+  if (args->in_file == NULL) {
+    fprintf(stderr, "Fatal: no input file provided\n");
+    exit(1);
+  }
+
+  ifp = fopen(args->in_file, "r");
+
+  if (ifp == NULL) {
+    fprintf(stderr, "Fatal: could not open %s\n", args->in_file);
+    exit(1);
+  }
+
+  stream_to_upper(ifp, stdout);
+
+  fclose(ifp);
+}
+
+int main(int argc, char **argv) {
+  if (argc < 2) {
+    print_help();
+    return 0;
+  }
+
+  if (strcmp(argv[1], "wrap") == 0) {
+    handle_wrap(argc, argv);
+  } else if (strcmp(argv[1], "upper") == 0) {
+    handle_upper(argc, argv);
+  } else {
+    print_help();
+  }
+  return 0;
 }
