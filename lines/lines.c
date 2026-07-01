@@ -1,7 +1,47 @@
 #include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+typedef struct {
+  char *data;
+  int capacity;
+  int len;
+  int head;
+  int tail;
+} charbuf;
+
+typedef struct flag_def {
+  const char *name;
+  int requires_value;
+  const char *help;
+} flag_def;
+
+typedef struct parsed_flag {
+  const char *name;
+  const char *value;
+} parsed_flag;
+
+typedef struct parsed_args {
+  int argc;
+  char **argv;
+  const char *help;
+  parsed_flag flags[16]; // supports up to 16 flags
+  int flag_count;
+  char *pos_args[16]; // supports up to 16 positional arguments
+  int pos_args_count;
+} parsed_args;
+
+typedef struct command_def {
+  const char *command;
+  const char *help;
+  const flag_def *flags;
+  const int flag_count;
+  // TODO positional_count
+  int (*handler)(parsed_args *pargs);
+} command_def;
 
 void stream_to_upper(FILE *ifp, FILE *ofp) {
   int c;
@@ -36,14 +76,6 @@ void flush_line(FILE *ofp, char *buf, int from, int to) {
 
   fputc('\n', ofp);
 }
-
-typedef struct {
-  char *data;
-  int capacity;
-  int len;
-  int head;
-  int tail;
-} charbuf;
 
 charbuf *charbuf_new(int initial_cap) {
   charbuf *buf;
@@ -179,151 +211,157 @@ void wrap_lines(FILE *ifp, FILE *ofp, int max_len) {
   charbuf_free(buf);
 }
 
-void print_help() {
-  fprintf(stdout,
-          "Stream based text manipulation tools for fun 🧚‍♂️.\n\n\
-USAGE\n\
-  lines <command> [flags]\n\n\
-COMMANDS\n\
-  wrap:     Wrap lines.\n\
-  upper:    Uppercase input\n\n\
-FLAGS\n\
-  --help    Show help for command\n\
-  \n");
-}
+int safe_str_to_int(const char *str, int *out) {
+  char *endptr;
+  errno = 0;
 
-void print_help_wrap() {
-  fprintf(stdout, "Wrap lines.\n\n\
-USAGE\n\
-  lines wrap <input-file> [flags]\n\n\
-FLAGS\n\
-  --help    Show help for command\n\
-  --len     Line wrap length\n\
-");
-}
+  long val = strtol(str, &endptr, 10);
 
-void print_help_upper() {
-  fprintf(stdout, "Uppercase input.\n\n\
-USAGE\n\
-  lines upper <input-file> [flags]\n\n\
-FLAGS\n\
-  --help    Show help for command\n\
-");
-}
-
-typedef struct wrap_args {
-  char *in_file;
-  int len;
-} wrap_args;
-
-void handle_wrap(int argc, char **argv) {
-  wrap_args *args = malloc(sizeof(wrap_args));
-
-  if (args == NULL) {
-    fprintf(stderr, "Fatal: could not allocate %lu bytes.", sizeof(wrap_args));
-    exit(1);
+  // Check for conversion errors
+  if (endptr == str) {
+    return 1; // no digits found
+  }
+  if (*endptr != '\0') {
+    return 1; // trailing garbage (e.g. "123abc")
+  }
+  if (errno == ERANGE) {
+    return 1; // overflow/underflow
+  }
+  if (val > INT_MAX || val < INT_MIN) {
+    return 1; // out of int range
   }
 
-  args->in_file = NULL;
-  args->len = 50;
+  *out = (int)val;
+
+  return 0;
+}
+
+int handle_wrap(parsed_args *pargs) {
+  if (pargs->pos_args_count == 0) {
+    fprintf(stderr, "Fatal: no input file provided\n");
+    return 1;
+  }
+
+  char *in_file = pargs->pos_args[0];
 
   FILE *ifp = NULL;
   const char *len_err_str = NULL;
 
-  for (int i = 2; i < argc; i++) {
-    if (strcmp(argv[i], "--help") == 0) {
-      print_help_wrap();
-      exit(0);
-    }
-
-    if (strcmp(argv[i], "--len") == 0) {
-      args->len = strtonum(argv[i + 1], 1, 10000, &len_err_str);
-
-      if (len_err_str != NULL) {
-        fprintf(stderr, "Fatal: [%s] Coud not parse --len flag.", len_err_str);
-        exit(1);
-      }
-
-      i++;
-      continue;
-    }
-
-    args->in_file = argv[i];
-  }
-
-  if (args->in_file == NULL) {
-    fprintf(stderr, "Fatal: no input file provided\n");
-    exit(1);
-  }
-
-  ifp = fopen(args->in_file, "r");
+  ifp = fopen(in_file, "r");
 
   if (ifp == NULL) {
-    fprintf(stderr, "Fatal: could not open %s\n", args->in_file);
-    exit(1);
+    fprintf(stderr, "Fatal: could not open %s\n", in_file);
+    return 1;
   }
 
-  wrap_lines(ifp, stdout, args->len);
+  int len = 50;
+
+  for (int i = 0; i < pargs->flag_count; i++) {
+    if (strcmp(pargs->flags[i].name, "len") == 0) {
+      if (safe_str_to_int(pargs->flags[i].value, &len) != 0) {
+        fprintf(stderr, "Fatal: failed to convert --len arg %s to integer.\n",
+                pargs->flags[i].value);
+      }
+    }
+  }
+
+  wrap_lines(ifp, stdout, len);
 
   fclose(ifp);
+
+  return 0;
 }
 
-typedef struct upper_args {
-  char *in_file;
-} upper_args;
-
-void handle_upper(int argc, char **argv) {
-  upper_args *args = malloc(sizeof(upper_args));
-
-  if (args == NULL) {
-    fprintf(stderr, "Fatal: could not allocate %lu bytes.", sizeof(upper_args));
+int handle_upper(parsed_args *pargs) {
+  if (pargs->pos_args_count == 0) {
+    fprintf(stderr, "Fatal: no input file provided\n");
+    return 1;
   }
 
-  args->in_file = NULL;
+  char *in_file = pargs->pos_args[0];
 
   FILE *ifp = NULL;
 
-  for (int i = 2; i < argc; i++) {
-    if (strcmp(argv[i], "--help") == 0) {
-      print_help_upper();
-      exit(0);
-    }
-
-    args->in_file = argv[i];
-  }
-
-  if (args->in_file == NULL) {
-    fprintf(stderr, "Fatal: no input file provided\n");
-    exit(1);
-  }
-
-  ifp = fopen(args->in_file, "r");
+  ifp = fopen(in_file, "r");
 
   if (ifp == NULL) {
-    fprintf(stderr, "Fatal: could not open %s\n", args->in_file);
-    exit(1);
+    fprintf(stderr, "Fatal: could not open %s\n", in_file);
+    return 1;
   }
 
   stream_to_upper(ifp, stdout);
 
   fclose(ifp);
+  return 0;
 }
 
-typedef struct command_handler {
-  const char *command;
-  void (*handler)(int, char **);
-} command_handler;
+int parse_args(parsed_args *args, command_def *def, int argc, char **argv) {
+  args->argc = argc;
+  args->argv = argv;
+  args->help = def->help;
+  args->flag_count = 0;
+  args->pos_args_count = 0;
 
-int excmd(struct command_handler *table, int table_len, int argc, char **argv) {
+  for (int i = 2; i < argc; i++) {
+    if (strncmp(argv[i], "--", 2) == 0) {
+      const char *flag_name = argv[i] + 2; // skip "--"
+
+      if (strcmp(flag_name, "help") == 0) {
+        fprintf(stdout, "%s", def->help);
+        exit(0);
+      }
+
+      for (int f = 0; f < def->flag_count; f++) {
+        if (strcmp(def->flags[f].name, flag_name) == 0) {
+          args->flags[args->flag_count].name = flag_name;
+
+          if (def->flags[f].requires_value) {
+            if (i + 1 > argc) {
+              fprintf(stderr, "Fatal: %s requires value.", flag_name);
+              exit(1);
+            }
+
+            args->flags[args->flag_count].value = argv[i + 1];
+            i++;
+          } else {
+            args->flags[args->flag_count].value = NULL;
+          }
+
+          args->flag_count++;
+        }
+      }
+    } else {
+      args->pos_args[args->pos_args_count] = argv[i];
+
+      args->pos_args_count++;
+    }
+  }
+
+  return 0;
+}
+
+int excmd(struct command_def *table, int table_len, const char *help, int argc,
+          char **argv) {
   if (argc < 2) {
-    print_help();
+    fprintf(stdout, "%s\n", help);
+    return 0;
+  }
+
+  if (strcmp(argv[1], "--help") == 0) {
+    fprintf(stdout, "%s\n", help);
     return 0;
   }
 
   for (int i = 0; i < table_len; i++) {
     if (strcmp(argv[1], table[i].command) == 0) {
-      table[i].handler(argc, argv);
-      return 0;
+      parsed_args args;
+      int res = parse_args(&args, &table[i], argc, argv);
+
+      if (res == 0) {
+        res = table[i].handler(&args);
+      }
+
+      return res;
     }
   }
 
@@ -333,12 +371,55 @@ int excmd(struct command_handler *table, int table_len, int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
-  struct command_handler command_table[] = {
-      {"wrap", handle_wrap},
-      {"upper", handle_upper},
+  const char *help =
+      "Stream based text manipulation tools for fun 🧚‍♂️.\n\n\
+USAGE\n\
+  lines <command> [flags]\n\n\
+COMMANDS\n\
+  wrap:     Wrap lines.\n\
+  upper:    Uppercase input\n\n\
+FLAGS\n\
+  --help    Show help for command\n\
+";
+
+  const char *wrap_help = "Wrap lines.\n\n\
+USAGE\n\
+  lines wrap <input-file> [flags]\n\n\
+FLAGS\n\
+  --help    Show help for command\n\
+  --len     Line wrap length\n\
+";
+
+  const char *upper_help = "Uppercase input.\n\n\
+USAGE\n\
+  lines upper <input-file> [flags]\n\n\
+FLAGS\n\
+  --help    Show help for command\n\
+";
+
+  const flag_def wrap_flags[] = {
+      {.name = "help", .requires_value = 0, .help = "TODO"},
+      {.name = "len", .requires_value = 1, .help = "TODO"},
+  };
+
+  const flag_def upper_flags[] = {
+      {.name = "help", .requires_value = 0, .help = "TODO"},
+  };
+
+  struct command_def command_table[] = {
+      {.command = "wrap",
+       .handler = handle_wrap,
+       .flags = wrap_flags,
+       .flag_count = sizeof(wrap_flags) / sizeof(wrap_flags[0]),
+       .help = wrap_help},
+      {.command = "upper",
+       .handler = handle_upper,
+       .flags = upper_flags,
+       .flag_count = sizeof(upper_flags) / sizeof(upper_flags[0]),
+       .help = upper_help},
   };
 
   int table_len = sizeof(command_table) / sizeof(command_table[0]);
 
-  return excmd(command_table, table_len, argc, argv);
+  return excmd(command_table, table_len, help, argc, argv);
 }
