@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../fairy-dust/fairy-dust.h"
 
 typedef struct {
   char *data;
@@ -12,36 +13,6 @@ typedef struct {
   int head;
   int tail;
 } charbuf;
-
-typedef struct flag_def {
-  const char *name;
-  int requires_value;
-  const char *help;
-} flag_def;
-
-typedef struct parsed_flag {
-  const char *name;
-  const char *value;
-} parsed_flag;
-
-typedef struct parsed_args {
-  int argc;
-  char **argv;
-  const char *help;
-  parsed_flag flags[16]; // supports up to 16 flags
-  int flag_count;
-  char *pos_args[16]; // supports up to 16 positional arguments
-  int pos_args_count;
-} parsed_args;
-
-typedef struct command_def {
-  const char *command;
-  const char *help;
-  const flag_def *flags;
-  const int flag_count;
-  // TODO positional_count
-  int (*handler)(parsed_args *pargs);
-} command_def;
 
 void stream_to_upper(FILE *ifp, FILE *ofp) {
   int c;
@@ -293,81 +264,6 @@ int handle_upper(parsed_args *pargs) {
 
   fclose(ifp);
   return 0;
-}
-
-int parse_args(parsed_args *args, command_def *def, int argc, char **argv) {
-  args->argc = argc;
-  args->argv = argv;
-  args->help = def->help;
-  args->flag_count = 0;
-  args->pos_args_count = 0;
-
-  for (int i = 2; i < argc; i++) {
-    if (strncmp(argv[i], "--", 2) == 0) {
-      const char *flag_name = argv[i] + 2; // skip "--"
-
-      if (strcmp(flag_name, "help") == 0) {
-        fprintf(stdout, "%s", def->help);
-        exit(0);
-      }
-
-      for (int f = 0; f < def->flag_count; f++) {
-        if (strcmp(def->flags[f].name, flag_name) == 0) {
-          args->flags[args->flag_count].name = flag_name;
-
-          if (def->flags[f].requires_value) {
-            if (i + 1 > argc) {
-              fprintf(stderr, "Fatal: %s requires value.", flag_name);
-              exit(1);
-            }
-
-            args->flags[args->flag_count].value = argv[i + 1];
-            i++;
-          } else {
-            args->flags[args->flag_count].value = NULL;
-          }
-
-          args->flag_count++;
-        }
-      }
-    } else {
-      args->pos_args[args->pos_args_count] = argv[i];
-
-      args->pos_args_count++;
-    }
-  }
-
-  return 0;
-}
-
-int excmd(struct command_def *table, int table_len, const char *help, int argc,
-          char **argv) {
-  if (argc < 2) {
-    fprintf(stdout, "%s\n", help);
-    return 0;
-  }
-
-  if (strcmp(argv[1], "--help") == 0) {
-    fprintf(stdout, "%s\n", help);
-    return 0;
-  }
-
-  for (int i = 0; i < table_len; i++) {
-    if (strcmp(argv[1], table[i].command) == 0) {
-      parsed_args args;
-      int res = parse_args(&args, &table[i], argc, argv);
-
-      if (res == 0) {
-        res = table[i].handler(&args);
-      }
-
-      return res;
-    }
-  }
-
-  fprintf(stderr, "Fatal: Invalid command %s passed.\n", argv[1]);
-
-  return 1;
 }
 
 int main(int argc, char **argv) {
