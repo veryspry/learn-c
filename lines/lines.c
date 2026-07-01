@@ -1,10 +1,11 @@
+#include "../fairy-dust/fairy-dust.h"
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../fairy-dust/fairy-dust.h"
+#include <unistd.h>
 
 typedef struct {
   char *data;
@@ -208,20 +209,22 @@ int safe_str_to_int(const char *str, int *out) {
 }
 
 int handle_wrap(parsed_args *pargs) {
-  if (pargs->pos_args_count == 0) {
-    fprintf(stderr, "Fatal: no input file provided\n");
-    return 1;
-  }
+  FILE *ifp = stdin;
 
-  char *in_file = pargs->pos_args[0];
+  int should_close = 0;
 
-  FILE *ifp = NULL;
-  const char *len_err_str = NULL;
+  if (pargs->pos_args_count > 0) {
+    char *in_file = pargs->pos_args[0];
+    ifp = fopen(in_file, "r");
 
-  ifp = fopen(in_file, "r");
+    if (ifp == NULL) {
+      fprintf(stderr, "Fatal: could not open %s.\n", in_file);
+      return 1;
+    }
 
-  if (ifp == NULL) {
-    fprintf(stderr, "Fatal: could not open %s\n", in_file);
+    should_close = 1;
+  } else if (isatty(STDIN_FILENO)) {
+    fprintf(stderr, "Fatal: no input provided.\n");
     return 1;
   }
 
@@ -238,31 +241,39 @@ int handle_wrap(parsed_args *pargs) {
 
   wrap_lines(ifp, stdout, len);
 
-  fclose(ifp);
+  if (should_close) {
+    fclose(ifp);
+  }
 
   return 0;
 }
 
 int handle_upper(parsed_args *pargs) {
-  if (pargs->pos_args_count == 0) {
-    fprintf(stderr, "Fatal: no input file provided\n");
-    return 1;
-  }
+  FILE *ifp = stdin;
 
-  char *in_file = pargs->pos_args[0];
+  int should_close = 0;
 
-  FILE *ifp = NULL;
+  if (pargs->pos_args_count > 0) {
+    char *in_file = pargs->pos_args[0];
+    ifp = fopen(in_file, "r");
 
-  ifp = fopen(in_file, "r");
+    if (ifp == NULL) {
+      fprintf(stderr, "Fatal: could not open %s\n", in_file);
+      return 1;
+    }
 
-  if (ifp == NULL) {
-    fprintf(stderr, "Fatal: could not open %s\n", in_file);
+    should_close = 1;
+  } else if (isatty(STDIN_FILENO)) {
+    fprintf(stderr, "Fatal: no input provided.\n");
     return 1;
   }
 
   stream_to_upper(ifp, stdout);
 
-  fclose(ifp);
+  if (should_close) {
+    fclose(ifp);
+  }
+
   return 0;
 }
 
