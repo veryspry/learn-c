@@ -47,6 +47,34 @@ int parse_args(parsed_args *args, command_def *def, int argc, char **argv) {
   return 0;
 }
 
+typedef struct {
+  char *desc;
+} help_def;
+
+void print_help() {
+
+  // ------------------
+  // MAIN HELP
+  // ------------------
+
+  // <DESCRIPTION>
+  //
+  // USAGE
+  // <TOOL_NAME>
+  //   <TOOL_NAME> <command> [flags]
+  //
+  // COMMANDS
+  //   <CMD_1>     <DESCRIPTION>
+  //   <CMD_2>     <DESCRIPTION>
+  //   <CMD_2>     <DESCRIPTION>
+  //
+  // FLAGS
+  //   <FLAG_1>    <DESCRIPTION>
+  //   <FLAG_2>    <DESCRIPTION>
+  //   <FLAG_3>    <DESCRIPTION>
+
+}
+
 int excmd(struct command_def *table, int table_len, const char *help, int argc,
           char **argv) {
   if (argc < 2) {
@@ -72,7 +100,7 @@ int excmd(struct command_def *table, int table_len, const char *help, int argc,
     }
   }
 
-  fprintf(stderr, "Fatal: Invalid command %s passed.\n", argv[1]);
+  fprintf(stdout, "%s", help);
 
   return 1;
 }
