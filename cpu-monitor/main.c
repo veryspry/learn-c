@@ -9,10 +9,6 @@
 
 #define STATIC_BUFFER_SIZE 512
 
-static size_t weights_len = STATIC_BUFFER_SIZE;
-
-static host_cpu_load_info_data_t *cpu_info_buf[STATIC_BUFFER_SIZE];
-
 void read_ticks(host_cpu_load_info_data_t *info) {
   mach_msg_type_number_t count = HOST_CPU_LOAD_INFO_COUNT;
 
@@ -29,10 +25,9 @@ void clear_line() {
     printf("\x1b[2K"); // Clear entire line
 }
 
-void start_poll() {
+void poll(host_cpu_load_info_data_t *cpu_info_buf[], size_t cpu_info_size) {
   int read = 0;
   int write = 0;
-
 
   printf("CPU Usage\n-------------\n\n");
 
@@ -41,6 +36,10 @@ void start_poll() {
     data = malloc(sizeof(host_cpu_load_info_data_t));
 
     read_ticks(data);
+
+    if (cpu_info_buf[write] != NULL) {
+      free(cpu_info_buf);
+    }
 
     cpu_info_buf[write] = data;
 
@@ -69,7 +68,7 @@ void start_poll() {
       100.0 * idle / total
     );
 
-    if (write + 1 < (int)weights_len) {
+    if (write + 1 < (int)cpu_info_size) {
       write++;
     } else {
       write = 0;
@@ -79,8 +78,18 @@ void start_poll() {
   }
 }
 
+void cleanup(host_cpu_load_info_data_t *cpu_info_buf[], size_t cpu_info_size) {
+  for (size_t i = 0; i < cpu_info_size; i++) {
+    free(cpu_info_buf[i]);
+  }
+}
+
 int main() {
-  start_poll();
+  static host_cpu_load_info_data_t *cpu_info_buf[STATIC_BUFFER_SIZE];
+
+  poll(cpu_info_buf, STATIC_BUFFER_SIZE);
+
+  cleanup(cpu_info_buf, STATIC_BUFFER_SIZE);
 
   return 0;
 }
