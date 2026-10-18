@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include "./ring-buffer.h"
 
 #define STATIC_BUFFER_SIZE 512
 
@@ -21,6 +22,11 @@ void read_ticks(host_cpu_load_info_data_t *info) {
     (host_info_t)info,
     &count
   );
+}
+
+void clear_line() {
+    printf("\x1b[1F"); // Move to beginning of previous line
+    printf("\x1b[2K"); // Clear entire line
 }
 
 void start_poll() {
@@ -52,16 +58,15 @@ void start_poll() {
 
     double total = user + sys + nice + idle;
 
-    printf("\x1b[1F"); // Move to beginning of previous line
-    printf("\x1b[2K"); // Clear entire line
+    clear_line();
 
     printf(
       "CPU total: %.1f%% | user: %.1f%% | system: %.1f%% | nice: %.1f%% | idle: %.1f%% \n",
-      100.0 * (user + sys + nice) / total,
-      user,
-      sys,
-      nice,
-      idle
+      100.0 * (user + sys+ nice) / total,
+      100.0 * user / total,
+      100.0 * sys / total,
+      100.0 * nice / total,
+      100.0 * idle / total
     );
 
     if (write + 1 < (int)weights_len) {
@@ -70,7 +75,7 @@ void start_poll() {
       write = 0;
     }
 
-    usleep(100000);
+    usleep(500000);
   }
 }
 
