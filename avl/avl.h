@@ -16,7 +16,7 @@ void tree_free(Node *root);
 
 void insert(Node **root, Node *node);
 
-void rotate_right();
+void rotate_right(Node **root);
 
-void rotate_left();
+void rotate_left(Node **root);
 

@@ -35,32 +35,24 @@ void test_inserts_left_and_right_nodes(void) {
 void test_simple_balance(void) {
   Node *root = NULL;
   
-  Node *a = node_new(3);
-  Node *b = node_new(2);
-  Node *c = node_new(1);
+  insert(&root, node_new(3));
+  insert(&root, node_new(2));
+  insert(&root, node_new(1));
 
-  insert(&root, a);
-  insert(&root, b);
-  insert(&root, c);
+  CU_ASSERT_PTR_NOT_NULL(root->left);
+  CU_ASSERT_PTR_NOT_NULL(root->right);
 
-  CU_ASSERT_PTR_NOT_NULL(b->left);
-  CU_ASSERT_PTR_NOT_NULL(b->right);
+  CU_ASSERT_PTR_NULL(root->left->left);
+  CU_ASSERT_PTR_NULL(root->left->right);
 
-  CU_ASSERT_PTR_NULL(a->left);
-  CU_ASSERT_PTR_NULL(a->right);
-
-  CU_ASSERT_PTR_NULL(b->left);
-  CU_ASSERT_PTR_NULL(b->right);
+  CU_ASSERT_PTR_NULL(root->right->left);
+  CU_ASSERT_PTR_NULL(root->right->right);
 
   CU_ASSERT_EQUAL(root->val, 2);
   CU_ASSERT_EQUAL(root->left->val, 1);
   CU_ASSERT_EQUAL(root->right->val, 3);
 
-
-  // TODO: tree_free() once it returns top node
-  node_free(a);
-  node_free(b);
-  node_free(c);
+  tree_free(root);
 }
 
 int main() {

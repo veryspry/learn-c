@@ -40,35 +40,54 @@ void tree_free(Node *root) {
 }
 
 // TODO:
-//   1. should return new top level root of entire tree
-//   2. needs to perform rotations
+//   1. needs to perform rotations
+//   3. Need to fix balanace -- currenlty doesn't work correctly
+//      (e.g inserting a left child on a node that alreaedy has a right child
+//      should not change height)
 void insert(Node **root, Node *node) {
   if (node == NULL) {
     return;
   }
 
-  while (*root != NULL) {
-    if (node->val < (*root)->val) {
-      (*root)->balance--;
-      root = &(*root)->left;
+  Node **curr = root;
+
+  while (*curr != NULL) {
+    if (node->val < (*curr)->val) {
+      curr = &(*curr)->left;
     } else {
-      (*root)->balance++;
-      root = &(*root)-> right;
+      curr = &(*curr)->right;
     }
   }
 
-  *root = node;
+  *curr = node;
 }
 
 // void delete(Node **root, Node *node) {
 //   // TODO
 // }
 
-void rotate_right() {
+void rotate_right(Node **root) {
+  Node *a = *root;
+  Node *b = a->right;
 
+  a->left = b->right;
+  b->right = a;
+
+  *root = b;
+
+  a->balance = a->balance + 1 - (b->balance < 0 ? b->balance: 0);
+  b->balance = b->balance + 1 + (a->balance > 0 ? a->balance: 0);
 }
 
-void rotate_left() {
+void rotate_left(Node **root) {
+  Node *a = *root;
+  Node *b = a->left;
 
+  a->right = b->left;
+  b->left = a;
+  *root = b;
+
+  a->balance = a->balance - 1 - (b->balance > 0 ? b->balance : 0);
+  b->balance = b->balance - 1 + (a->balance < 0 ? a->balance : 0);
 }
 
