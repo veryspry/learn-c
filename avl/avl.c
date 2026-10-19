@@ -105,7 +105,7 @@ void insert(Node **root, Node *node) {
 
 void rotate_right(Node **root) {
   Node *a = *root;
-  Node *b = a->right;
+  Node *b = a->left;
 
   a->left = b->right;
   b->right = a;
@@ -118,7 +118,7 @@ void rotate_right(Node **root) {
 
 void rotate_left(Node **root) {
   Node *a = *root;
-  Node *b = a->left;
+  Node *b = a->right;
 
   a->right = b->left;
   b->left = a;
