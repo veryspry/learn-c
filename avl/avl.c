@@ -49,9 +49,15 @@ void insert(Node **root, Node *node) {
     return;
   }
 
+  Node **path[64];
+  int depth = 0;
+
   Node **curr = root;
 
   while (*curr != NULL) {
+    path[depth] = curr;
+    depth++;
+
     if (node->val < (*curr)->val) {
       curr = &(*curr)->left;
     } else {
@@ -59,7 +65,38 @@ void insert(Node **root, Node *node) {
     }
   }
 
+  // add new node to tree and link to left/right of parent
   *curr = node;
+
+  while (depth > 0) {
+    depth--;
+    Node **slot = path[depth];
+    Node *n = *slot;
+
+    if (node->val < n->val) {
+      n->balance--;
+    } else {
+      n->balance++;
+    }
+
+    if (n->balance == 0) {
+      // tree is in acceeptable balance range
+      break;
+    }
+
+    if (n->balance == 1 || n->balance == -1) {
+      // tree is in acceeptable balance range
+      continue;
+    }
+
+    if (n->balance == -2) {
+      rotate_right(slot);
+    } else {
+      rotate_left(slot);
+    }
+
+    break;
+  }
 }
 
 // void delete(Node **root, Node *node) {
